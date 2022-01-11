@@ -1,0 +1,364 @@
+---
+title: "pruebita2"
+output: html_document
+---
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+```{r setup}
+knitr::opts_chunk$set(message = TRUE, warning = FALSE) #No warnings ni mensajes en el html de salida
+```
+
+```{r, warning=FALSE, message=FALSE}
+library (edgeR)
+library (PCAtools)
+library(ggplot2)
+library(DESeq2)
+library(genefilter)
+library(DEGreport)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(ReportingTools)
+library(clusterProfiler)
+library(pathview)
+```
+
+```{r}
+load("datos.rda")
+load("datos2.rda")
+#load("human_genes.csv")
+```
+
+# Análisis de la expresión diferencial
+Vamos a explorar nuestros datos. Partimos de nuestros objetos DESeq2 creados anteriormente (datos y datos2). 
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+datos2 <- DESeq2::estimateDispersions(datos2)
+```
+
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+plotDispEsts(datos2)
+```
+
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+datos <- DESeq2::estimateDispersions(datos)
+```
+
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+plotDispEsts(datos)
+```
+**Test de Wald** es el test más usado comúnmente en DESEq2 para comparar dos grupos. La hipótesis nula es que los dos grupos no son diferentes y el logFC=0. La lista de contrastes se puede ver usando resultsNames(). 
+
+The most commonly used testing for comparing two groups in DESeq2 is the Walds’s test. The null hypothesis is that the groups are not different and logFC=0. The list of contrasts can be seen using resultsNames() -en este trabajo solo hay un contraste, pero en otra ocasión puede ser que tengamos más de uno y podamos elegir. 
+
+ - GSE175477
+ 
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+#GSE175477
+dge_results2 <- nbinomWaldTest(datos2)
+resultsNames(dge_results2)
+
+#Obtenemos las tablas del contraste caso vs control
+res1.2 <- results(dge_results2,name="individual_patient_vs_control",alpha=0.05, pAdjustMethod = "BH")
+
+#Distribución de los pvalores
+hist(res1.2$pvalue[res1.2$baseMean>1],main="res1.2 Pval distribution",xlab="P-values")
+```
+ -GSE165322
+ 
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+#GSE165322
+dge_results <- nbinomWaldTest(datos)
+resultsNames(dge_results)
+
+#Obtenemos las tablas del contraste caso vs control
+res1 <- results(dge_results,name="individual_Patient_vs_Control",alpha=0.05, pAdjustMethod = "BH")
+
+#Distribución de los pvalores
+hist(res1$pvalue[res1$baseMean>1],main="res1 Pval distribution",xlab="P-values")
+```
+Vemos un "mejor comportamiento" en los pvalores de GSE175477 que GSE165322.
+
+```{r}
+# only genes with padj <0.05 and an absolute fold change >2
+table(res1.2$padj<0.05 & abs(res1.2$log2FoldChange)>2)
+table(res1$padj<0.05 & abs(res1$log2FoldChange)>2)
+```
+Vamos a hacer una pequeña anotación de los genes que conforman nuestra DGE list. 
+
+  -GSE175477
+
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+
+#GSE175477
+# convert res to data.frame
+df_res2 <- as.data.frame(res1.2)
+
+# add row names as a new column
+df_res2$gene_id <- rownames(df_res2)
+
+# read genes info
+hg2 <- read.delim("human_genes.csv",header=T,sep="\t",stringsAsFactors=F)
+hg2 <- hg2[!duplicated(hg2$gene_id),]
+
+# merge dataframes
+df_res22 <- merge(df_res2,hg2,by="gene_id")
+head(df_res22)
+```
+
+ -GSE165322
+ 
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+#GSE165322
+# convert res to data.frame
+df_res <- as.data.frame(res1)
+
+# add row names as a new column
+df_res$gene_id <- rownames(df_res)
+
+
+# read genes info
+hg <- read.delim("human_genes.csv",header=T,sep="\t",stringsAsFactors=F)
+hg <- hg[!duplicated(hg$gene_id),]
+
+# merge dataframes
+df_res11 <- merge(df_res,hg,by="gene_id")
+head(df_res11)
+```
+
+Corregimos los valores logFC mediante 'lfcShrink()', que corrige el log2FC para genes con alta dispersión.
+
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+lres1.2 <- lfcShrink(dge_results2,coef="individual_patient_vs_control",res=res1.2,type="normal")
+lres1.1 <- lfcShrink(dge_results,coef="individual_Patient_vs_Control",res=res1,type="normal")
+```
+
+## Visualización 
+### MA plot
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+DESeq2::plotMA(res1.2, alpha=0.05, colNonSig = "gray60", colSig = "blue")
+```
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+DESeq2::plotMA(res1, alpha=0.05, colNonSig = "orange", colSig = "red")
+```
+
+### Volcano plot
+Tengo que hacerlo jeje
+
+## Exportamos los resultados
+```{r}
+#Para usar write.csv, dataframe solo
+#write.csv(df_res22, file = "resultsGSE175477.csv")
+#write.csv(df_res11, file = "resultsGSE165322.csv")
+```
+
+## Creamos un informe
+  -GSE175477
+```{r}
+#informe = "GSE175477 RESULTS"
+#inf = HTMLReport(shortName = informe, title = informe)
+#publish(df_res22,inf)
+#finish(inf)
+```
+  -GSE165322
+```{r}
+#informe2 = "GSE165322 RESULTS"
+#inf2 = HTMLReport(shortName = informe2, title = informe2)
+#publish(df_res11,inf2)
+#finish(inf2)
+```
+
+# Análisis funcional
+Partiendo de nuestra lista de DGE, se va a generar un GSA (gene set analysis), con el fin de obtener una perspectiva funcional integradora de los genes GO-biological process y rutas KEGG. 
+```{r}
+# only genes with padj <0.05 and an absolute fold change >2
+# up and down-regulated genes
+table(df_res22$padj<0.05 & abs(df_res22$log2FoldChange)>2)
+table(df_res11$padj<0.05 & abs(df_res11$log2FoldChange)>2)
+```
+
+
+# Anotación funcional
+
+## GSEA with clusterProfiler
+### GO terms
+ -GSE175477
+```{r}
+# we need as input a decreasing sorted vector
+gse17list = df_res22$log2FoldChange
+names(gse17list) = df_res22$entrezgene
+gse17list = sort(gse17list, decreasing = TRUE)
+## Benjamini & Hochberg correction PETA CUIDADO
+#gsea_BH <- gseGO(geneList  = gse17list,
+#                  ont       ="BP",
+#                  OrgDb     = org.Hs.eg.db,
+#                  keyType   = 'ENTREZID',
+#                  verbose   = T,
+#                  minGSSize = 10,
+#                  maxGSSize = 500,
+#                  pAdjustMethod = "BH",
+#                  seed      = T)
+#save(gsea_BH, file = "data/GSEA_BH.RData")
+load("data/GSEA_BH.RData")
+dim(gsea_BH)
+
+dotplot(gsea_BH, showCategory=10) + ggtitle("GSEA")
+
+dfgseaBH <- as.data.frame(gsea_BH)
+head(dfgseaBH)
+
+```
+ -GSE165322
+```{r}
+# we need as input a decreasing sorted vector
+table(duplicated(df_res11$entrezgene))
+df_res11 = df_res11[!duplicated(df_res11$entrezgene),]
+gse16list = df_res11$log2FoldChange
+names(gse16list) = df_res11$entrezgene
+
+gse16list = sort(gse16list, decreasing = TRUE)
+
+
+## Benjamini & Hochberg correction 
+#gsea_BH16 <- gseGO(geneList  = gse16list,
+#                  ont       ="BP",
+#                  OrgDb     = org.Hs.eg.db,
+#                  keyType   = "ENTREZID",
+#                  verbose   = T,
+#                  minGSSize = 10,
+#                  maxGSSize = 500,
+#                  pAdjustMethod = "BH",
+#                  seed      = T)
+#save(gsea_BH16, file = "data/GSEA_BH16.RData")
+load("data/GSEA_BH16.RData")
+dim(gsea_BH16)
+
+dotplot(gsea_BH16, showCategory=10) + ggtitle("GSEA")
+
+dfgseaBH16 <- as.data.frame(gsea_BH16)
+head(dfgseaBH16)
+```
+
+### KEGG terms
+KEGG solo funciona con ENTREZID, pero por suerte ya tenemos esos identificadores. 
+
+  -GSE175477
+  
+```{r}
+# we need as input a decreasing sorted vector
+gse17listKEGG = df_res22$log2FoldChange
+names(gse17listKEGG) = df_res22$entrezgene
+gse17listKEGG = sort(gse17listKEGG, decreasing = TRUE)
+
+## Benjamini & Hochberg correction PETA CUIDADO
+#gsea_KEGG <- gseKEGG(geneList  = gse17listKEGG,
+#                    organism     = 'hsa',
+#                    keyType      = "ncbi-geneid",
+#                    pvalueCutoff = 0.05,
+#                    verbose      = TRUE)
+#save(gsea_KEGG, file = "data/GSEA_KEGG.RData")
+load("data/GSEA_KEGG.RData")
+dim(gsea_KEGG)
+
+dotplot(gsea_KEGG, showCategory=10) + ggtitle("GSEA")
+
+dfgseaKEGG <- as.data.frame(gsea_KEGG)
+head(dfgseaKEGG)
+
+pathview(gene.data = gse17listKEGG,
+                     pathway.id = "hsa03010",
+                     species    = "hsa",
+                     limit      = list(gene=max(abs(gse17listKEGG)), cpd=1))
+```
+
+
+  -GSE165322
+  
+```{r}
+# we need as input a decreasing sorted vector
+gse16listKEGG = df_res11$log2FoldChange
+names(gse16listKEGG) = df_res11$entrezgene
+gse16listKEGG = sort(gse16listKEGG, decreasing = TRUE)
+
+## Benjamini & Hochberg correction PETA CUIDADO
+#gsea16_KEGG <- gseKEGG(geneList  = gse16listKEGG,
+#                    organism     = 'hsa',
+#                    keyType      = "ncbi-geneid",
+#                    pvalueCutoff = 0.05,
+#                    verbose      = TRUE)
+#save(gsea16_KEGG, file = "data/GSEA16_KEGG.RData")
+load("data/GSEA16_KEGG.RData")
+dim(gsea16_KEGG)
+
+dotplot(gsea16_KEGG, showCategory=10) + ggtitle("GSEA")
+
+dfgseaKEGG16 <- as.data.frame(gsea16_KEGG)
+head(dfgseaKEGG16)
+
+pathview(gene.data = gse16listKEGG,
+                     pathway.id = "hsa04921",
+                     species    = "hsa",
+                     limit      = list(gene=max(abs(gse17listKEGG)), cpd=1))
+```
+## Visualización
+Por último, visualicemos algunos de los resultados.
+
+```{r}
+
+go_dot = dfgseaBH[order(dfgseaBH$NES, decreasing = T), ]
+go_dot16 = dfgseaBH16[order(dfgseaBH16$NES, decreasing = T), ]
+
+go_dot = go_dot[c(1:10, (nrow(go_dot)-9):nrow(go_dot)), ]
+go_dot16 = go_dot16[c(1:10, (nrow(go_dot16)-9):nrow(go_dot16)), ]
+
+go_dot$Cluster= as.factor("GO")
+go_dot16$Cluster= as.factor("GO")
+
+go_dot$Up_Down = ifelse(go_dot$NES > 0, "Enriched", "Depleted")
+go_dot16$Up_Down = ifelse(go_dot16$NES > 0, "Enriched", "Depleted")
+
+
+df = rbind(go_dot, go_dot16)
+
+# plot
+#ggplot vieja confiable 
+ggplot(df, aes(Description, Up_Down)) +
+        geom_point(aes(color = NES, size = setSize)) + coord_flip() + 
+         facet_grid(~Cluster) + 
+         scale_color_gradient2(low="deepskyblue3", high="red", midpoint=0, 
+                             limits=c(min(df$NES), max(df$NES))) 
+```
+```{r}
+
+kegg_dot = dfgseaBH[order(dfgseaKEGG$NES, decreasing = T), ]
+kegg_dot16 = dfgseaKEGG16[order(dfgseaKEGG16$NES, decreasing = T), ]
+
+kegg_dot = kegg_dot[c(1:10, (nrow(kegg_dot)-9):nrow(kegg_dot)), ]
+kegg_dot16 = kegg_dot16[c(1:10, (nrow(kegg_dot16)-9):nrow(kegg_dot16)), ]
+
+kegg_dot$Cluster= as.factor("KEGG")
+kegg_dot16$Cluster= as.factor("KEGG")
+
+kegg_dot$Up_Down = ifelse(kegg_dot$NES > 0, "Enriched", "Depleted")
+kegg_dot16$Up_Down = ifelse(kegg_dot16$NES > 0, "Enriched", "Depleted")
+
+
+df_KEGG = rbind(kegg_dot, kegg_dot16)
+
+# plot
+#ggplot vieja confiable 
+ggplot(df_KEGG, aes(Description, Up_Down)) +
+        geom_point(aes(color = NES, size = setSize)) + coord_flip() + 
+         facet_grid(~Cluster) + 
+         scale_color_gradient2(low="deepskyblue3", high="red", midpoint=0, 
+                             limits=c(min(df$NES), max(df$NES))) 
+```
+
+## Barplot of selected functions
+
+```{r, barplot ggplot2, fig.height=6, fig.width=8}
+
+```
+

@@ -1,0 +1,297 @@
+---
+title: "pruebita"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,echo=FALSE}
+doAll = FALSE
+```
+
+Load R packages
+```{r, warning=FALSE, message=FALSE}
+library (edgeR)
+library (PCAtools)
+library(ggplot2)
+library(DESeq2)
+library(genefilter)
+library(DEGreport)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(pheatmap)
+library(sva) #Note this exercise requires sva (>= v3.36.0) which is only available for R (>= v4.x)
+library(gridExtra)
+library(edgeR)
+```
+Creamos la matriz de expresión a partir de los ficheros de cuantificación obtenidos por HTSeqCount. 
+
+# Contruimos la matriz de conteo!
+En columnas, las muestras; en filas, los genes. También podemos leer los metadatos, que contiene la información sobre las muestras del experimento, que deberemos tener en cuenta para saber a qué grupo pertenecen. 
+```{r}
+#GSE175477
+count.matrix.datos <- read.table(file = 'GSE175477genecounts2.csv',row.names = 1, sep = '\t', header = TRUE)
+metadata2 <- read.table("GSE175477conditions.csv",  sep = '\t',header=TRUE, stringsAsFactors=FALSE)
+rownames(metadata2) <- metadata2$Sample_ID
+head(metadata2)
+```
+
+
+```{r}
+#GSE165322
+count.matrix <- read.table(file = 'Gene165322genecounts2.csv',row.names = 1, sep = '\t', header = TRUE)
+metadata <- read.table("GSE165322_condition_factors.tsv",  sep = '\t',header=TRUE, stringsAsFactors=FALSE)
+rownames(metadata) <- metadata$Sample_ID
+head(metadata)
+
+```
+
+
+```{r}
+#Podemos explorar nuestras matrices de conteo:
+head(count.matrix.datos)
+head(count.matrix)
+```
+
+
+Hemos creado un barplot para evaluar si descartamos alguna muestra, en base al número de genes detectados. Se ha representado con una linea la media de genes detectados en el total de las muestras.También, podemos crear un boxplot para evaluar la distribución de los conteos. 
+```{r}
+#BARPLOT
+summary(count.matrix.datos)
+{barplot(colSums(count.matrix.datos>0),ylab="Number of detected genes GSE175477",las=2)
+abline(h=median(colSums(count.matrix.datos>0)))}
+
+summary(count.matrix)
+{barplot(colSums(count.matrix>0),ylab="Number of detected genes GSE165322",las=2)
+abline(h=median(colSums(count.matrix>0)))}
+```
+
+```{r}
+#BOXPLOT
+boxplot(log10(as.matrix(count.matrix.datos)+1),ylab=expression('Log'[10]~'Read counts GSE175477'),las=2, main="Raw data")
+
+boxplot(log10(as.matrix(count.matrix)+1),ylab=expression('Log'[10]~'Read counts GSE165322'),las=2, main="Raw data")
+```
+
+
+Representamos la **distribución por gen** mediante un histograma para evaluar en cuántas muestras tiene expresión un gen. 
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+n_samples2 <- rowSums(count.matrix.datos>0)
+hist(n_samples2, xlab = "Number of samples", breaks=12)
+n_samples <- rowSums(count.matrix>0)
+hist(n_samples, xlab = "Number of samples", breaks=12)
+```
+
+# Filtramos nuestros datos
+Vamos a mantener los genes que poseen, como mínimo, 1 CPM (conteo por millón) en 4 o más muestras (estamos trabajado en ambos casos con 2 grupos de estudio de 6 muestras cada uno)
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+# remove genes with low counts
+keep_genes2 <- rowSums(edgeR::cpm(count.matrix.datos)>1) >= 4
+table(keep_genes2)
+count.matrix.datos.filtered <- count.matrix.datos[keep_genes2,]
+dim(count.matrix.datos.filtered)
+
+keep_genes <- rowSums(edgeR::cpm(count.matrix)>1) >= 4
+table(keep_genes)
+count.matrix.filtered <- count.matrix[keep_genes,]
+dim(count.matrix.filtered)
+```
+La nueva distribución de los conteos es:
+
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+boxplot(log10(as.matrix(count.matrix.datos.filtered)+1),ylab=expression('Log'[10]~'Read counts'),las=2,
+        main="Filtered data")
+
+boxplot(log10(as.matrix(count.matrix.filtered)+1),ylab=expression('Log'[10]~'Read counts'),las=2,
+        main="Filtered data")
+```
+
+# Normalización de los datos
+
+## Mediante deseq2
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+#Usamos "individual", que nos indica si es caso o control para hacer el contraste
+metadata2$individual <- factor(metadata2$individual)
+metadata$individual <- factor(metadata$individual)
+```
+
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+datos2 <- DESeqDataSetFromMatrix(countData=count.matrix.datos.filtered, colData=metadata2, design=~individual)
+datos <- DESeqDataSetFromMatrix(countData=count.matrix.filtered, colData=metadata, design=~individual)
+```
+
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+#GSE175477
+# normalisation
+datos2 <- DESeq2::estimateSizeFactors(datos2, type="ratio")
+head(counts(datos2, normalized=FALSE))
+head(counts(datos2, normalized=TRUE))
+assay(datos2, "counts.norm") <- counts(datos2, normalized=TRUE)
+
+#visualitation of row data and normalized data
+par(mfrow=c(1,2))
+boxplot(log10(as.matrix(assay(datos2, "counts")+1)),ylab=expression('Log'[10]~'Read counts'),las=2,main="Raw counts filtered")
+boxplot(log10(as.matrix(assay(datos2, "counts.norm")+1)),ylab=expression('Log'[10]~'Read counts'),las=2,main="Median ratio normalization")
+```
+
+
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+#GSE165322
+# normalisation
+datos <- DESeq2::estimateSizeFactors(datos, type="ratio")
+head(counts(datos, normalized=FALSE))
+head(counts(datos, normalized=TRUE))
+assay(datos, "counts.norm") <- counts(datos, normalized=TRUE)
+
+#visualitation
+par(mfrow=c(1,2))
+boxplot(log10(as.matrix(assay(datos, "counts")+1)),ylab=expression('Log'[10]~'Read counts'),las=2,main="Raw counts filtered")
+boxplot(log10(as.matrix(assay(datos, "counts.norm")+1)),ylab=expression('Log'[10]~'Read counts'),las=2,main="Median ratio normalization")
+```
+
+## Mediante VST
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+assay(datos2, "counts2.norm.VST") = as.data.frame(assay(varianceStabilizingTransformation(datos2,blind=T)),check.names=F)
+
+assay(datos, "counts.norm.VST") = as.data.frame(assay(varianceStabilizingTransformation(datos,blind=T)),check.names=F)
+```
+
+
+---------------------------------------------------
+
+# Análisis exploratorio
+- Análisis de correlación.En la matriz, el color rojo denota mayor correlación (mayor similitud). 
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+#GSE175477
+cor_matrix2 <- as.matrix(cor(assay(datos2, "counts2.norm.VST"),method="spearman"))
+pheatmap(cor_matrix2,border_color=NA,annotation_col=metadata2[,"individual",drop=F],
+         annotation_row=metadata2[,"individual",drop=F],annotation_legend=T)
+
+#GSE165322
+cor_matrix <- as.matrix(cor(assay(datos, "counts.norm.VST"),method="spearman"))
+pheatmap(cor_matrix,border_color=NA,annotation_col=metadata[,"individual",drop=F],
+         annotation_row=metadata[,"individual",drop=F],annotation_legend=T)
+```
+## PCA
+
+Realizamos PCA mediante la función 'prcomp()' de R. 
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+#GSE175477
+pcaobj2 <- prcomp(x=t(assay(datos2, "counts2.norm.VST")))
+{barplot(round(pcaobj2$sdev^2/sum(pcaobj2$sdev^2)*100,2),las=2,
+        names.arg=colnames(pcaobj2$x),ylab="% Variance explained",
+        xlab="PCA principal components")
+abline(h=2, lty=2)}
+
+#GSE165322
+pcaobj <- prcomp(x=t(assay(datos, "counts.norm.VST")))
+{barplot(round(pcaobj$sdev^2/sum(pcaobj$sdev^2)*100,2),las=2,
+        names.arg=colnames(pcaobj$x),ylab="% Variance explained",
+        xlab="PCA principal components")
+abline(h=2, lty=2)}
+```
+Vemos que para GSE175477, PC1, PC2 y PC3 explican el 82% de la varianza (45%+19%+18%). Sin embargo, en GSE165322 solo PC1 y PC2 ya explican el 83% (75% + 9%). Sabiendo esto, visualizamos la distribución de las muestras con ggplot:
+```{r}
+
+#GSE175477 -> PC1,PC2,PC3
+pca_mat1.2 <- as.data.frame(pcaobj2$x)
+pca_mat2.2 <- merge(pca_mat1.2,metadata2,by=0)
+
+ggplot(pca_mat2.2,aes(PC1,PC2,colour=individual))+
+  geom_point()+
+  theme_bw()
+
+p1 <- ggplot(pca_mat2.2,aes(PC1,PC3,colour=individual))+
+  geom_point()+
+  theme_bw()
+p2 <- ggplot(pca_mat2.2,aes(PC2,PC3,colour=individual))+
+  geom_point()+
+  theme_bw()
+gridExtra::grid.arrange(p1,p2,nrow=1,ncol=2)
+
+
+#GSE165322 -> PC1,PC2
+pca_mat1 <- as.data.frame(pcaobj$x)
+pca_mat2 <- merge(pca_mat1,metadata,by=0)
+
+ggplot(pca_mat2,aes(PC1,PC2,colour=individual))+
+  geom_point()+
+  theme_bw()
+```
+
+Como vemos, GSE165322 sale regulero. Corrijamos el batch effect. Lo haremos mediante **ComBat_seq**.
+
+## Batch effect corrección 
+
+```{r}
+#Veamos los grupos
+head(datos$seq_batch)
+
+#Necesitamos trabajar con matriz, no dataframe
+datos.batch <- as.matrix(assay(datos))
+
+#El contraste es por individuo, y se mira a qué grupo batch corresponde
+groups <- metadata$individual
+batches <- metadata$seq_batch
+datos.corrected = ComBat_seq(counts = datos.batch, batch = batches, group = groups)
+
+#Podemos ver cómo han cambiado!
+head(datos.corrected)
+head(assay(datos))
+```
+Repetimos el proceso anterior con los nuevos datos. Hemos llamado a la nueva matriz corregida con el mismo nombre (*datos*, muy original).
+```{r}
+
+datos <- DESeqDataSetFromMatrix(countData=datos.corrected, colData=metadata, design=~individual)
+
+# normalisation
+datos <- DESeq2::estimateSizeFactors(datos, type="ratio")
+head(counts(datos, normalized=FALSE))
+head(counts(datos, normalized=TRUE))
+assay(datos, "counts.norm") <- counts(datos, normalized=TRUE)
+
+#visualitation
+par(mfrow=c(1,2))
+boxplot(log10(as.matrix(assay(datos, "counts")+1)),ylab=expression('Log'[10]~'Read counts'),las=2,main="Raw counts filtered")
+boxplot(log10(as.matrix(assay(datos, "counts.norm")+1)),ylab=expression('Log'[10]~'Read counts'),las=2,main="Median ratio normalization")
+
+#Norm with VST
+assay(datos, "counts.norm.VST") = as.data.frame(assay(varianceStabilizingTransformation(datos,blind=T)),check.names=F)
+
+# PCA
+pcaobj.corrected <- prcomp(x=t(assay(datos, "counts.norm.VST")))
+{barplot(round(pcaobj.corrected$sdev^2/sum(pcaobj.corrected$sdev^2)*100,2),las=2,
+        names.arg=colnames(pcaobj.corrected$x),ylab="% Variance explained",
+        xlab="PCA principal components")
+abline(h=2, lty=2)}
+
+pca_mat1 <- as.data.frame(pcaobj.corrected$x)
+pca_mat2 <- merge(pca_mat1,metadata,by=0)
+
+ggplot(pca_mat2,aes(PC1,PC2,colour=individual))+
+  geom_point()+
+  theme_bw()
+```
+
+
+## Clustering 
+Se realiza una matriz de distancias muestra vs muestra. La distancia se computa mediante la función 'dist()' de R. 
+```{r,eval=doAll, results='hide', message=FALSE, warning=FALSE, error=FALSE}
+#GSE175477
+dmat2 <- as.matrix(dist(t(assay(datos2, "counts2.norm.VST"))))
+pheatmap(dmat2,border_color=NA,annotation_col=metadata[,"individual",drop=F],
+         annotation_row=metadata[,"individual",drop=F],annotation_legend=T)
+
+#GSE165322
+dmat <- as.matrix(dist(t(assay(datos, "counts.norm.VST"))))
+pheatmap(dmat,border_color=NA,annotation_col=metadata[,"individual",drop=F],
+         annotation_row=metadata[,"individual",drop=F],annotation_legend=T)
+```
+El siguiente paso es hacer el **análisis de la expresión diferencial** y la **anotación funcional**.
+```{r}
+save(datos,file="datos.rda")
+save(datos2, file="datos2.rda")
+```
+
