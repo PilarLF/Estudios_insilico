@@ -1,0 +1,13 @@
+Sample_ID	cell_type	individual	seq_batch	combined
+Sample1	Fibroblasts	Patient	1	Fibroblasts_Patient
+Sample2	Fibroblasts	Patient	1	Fibroblasts_Patient
+Sample3	Fibroblasts	Control	1	Fibroblasts_Control
+Sample4	Fibroblasts	Control	1	Fibroblasts_Control
+Sample5	Fibroblasts	Patient	2	Fibroblasts_Patient
+Sample6	Fibroblasts	Control	2	Fibroblasts_Control
+Sample7	RPE	Patient	1	RPE_Patient
+Sample8	RPE	Patient	1	RPE_Patient
+Sample9	RPE	Patient	2	RPE_Patient
+Sample10	RPE	Control	1	RPE_Control
+Sample11	RPE	Control	1	RPE_Control
+Sample12	RPE	Control	2	RPE_Control

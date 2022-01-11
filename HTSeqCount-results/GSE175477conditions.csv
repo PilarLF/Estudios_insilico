@@ -1,0 +1,13 @@
+Sample_ID	Cell_type	individual	disease_state
+Sample1	Dermal skin fibroblasts	control	Healthy individual
+Sample2	Dermal skin fibroblasts	control	Healthy individual
+Sample3	Dermal skin fibroblasts	control	Healthy individual
+Sample4	iPSC-RPE	control	Healthy individual
+Sample5	iPSC-RPE	control	Healthy individual
+Sample6	iPSC-RPE	control	Healthy individual
+Sample7	Dermal skin fibroblasts	patient	autosomal dominant retinitis pigmentosa
+Sample8	Dermal skin fibroblasts	patient	autosomal dominant retinitis pigmentosa
+Sample9	Dermal skin fibroblasts	patient	autosomal dominant retinitis pigmentosa
+Sample10	iPSC-RPE	patient	autosomal dominant retinitis pigmentosa
+Sample11	iPSC-RPE	patient	autosomal dominant retinitis pigmentosa
+Sample12	iPSC-RPE	patient	autosomal dominant retinitis pigmentosa
