@@ -13,4 +13,4 @@ Con este propósito, la investigación se dirige en área de la bioinformática 
 
 ![](https://github.com/PilarLF/Estudios_insilico/blob/main/ExtraFiles/imagenes/Untitled.png)
 
-El objetivo de este análisis es, por tanto, estudiar aquellos genes diferencialmente expresados en las células RPE y estudiar el papel de estas mutaciones en la RE, como marco hacia el diseño de nuevas oportunidades terapéuticas para una patología tan compleja. 
+El objetivo de este análisis es, por tanto, estudiar aquellos genes diferencialmente expresados y estudiar el papel de estas mutaciones en la RE, como marco hacia el diseño de nuevas oportunidades terapéuticas para una patología tan compleja. 
