@@ -1,5 +1,5 @@
 ---
-title: "pruebita"
+title: "ExploratoryAnalysis"
 output: html_document
 ---
 
@@ -26,6 +26,8 @@ library(sva) #Note this exercise requires sva (>= v3.36.0) which is only availab
 library(gridExtra)
 library(edgeR)
 ```
+Warning: las rutas usadas para cargar datos no son rutas relativas. Si se quiere ejecutar, hay que tener eso en cuenta.
+
 Creamos la matriz de expresión a partir de los ficheros de cuantificación obtenidos por HTSeqCount. 
 
 # Contruimos la matriz de conteo!
