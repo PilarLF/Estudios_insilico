@@ -1,0 +1,211 @@
+---
+title: "Tarea Final Estudios in silico en biomedicina"
+author: "Pilar López Fernández"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette 
+vignette: >
+  %\VignetteIndexEntry{geod71810}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+Este código contiene los parámetros y argumentos necesarios para ejecutar en la terminal de bash, con el objetivo de:
+  -Descargar los datos SRA desde GEO y pasar a formato fastq.
+  -Análisis de calidad mediante FastQ y MultiQC
+  -Eliminar los adaptadores con Cutadapt
+  -Alinemiento contra genoma de referencia mediante HISAT2
+  -Pasar ficheros SAM a Bam, usado como input para HTSeqCount
+  -Realizar la cuantificación mediante HTSeqCount
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,echo=FALSE,results='hide'}
+doAll = FALSE
+```
+
+- De SRA a Fastq
+  Bajamos los datos con prefetch de SRA-Toolkit. Utilizamos la opción fasta-dump, para cada fichero SRA. De este modo, obtenemos los ficheros FASTQ.
+```{bash, eval=doAll}
+prefetch --option-file SRR_Acc_List.txt
+cat SRR_Acc_List.txt | parallel -j 7 fastq-dump --split-files {}.sra
+```
+
+**Borramos** los SRA para recuperar espacio. En nuestra carpeta tendremos solamente los FASTQ . 
+```{bash, eval=doAll}
+rm *.sra
+```
+
+- **Quality control** con fastqc
+  Nos aseguramos de estar en la carpeta donde se encuentran los fastq descargados y lanzamos fastqc. 
+```{bash, eval=doAll}
+fastqc SRR*
+```
+ 
+ - MultiQC
+  Finalmente, usamos **Multiqc** para unir los html creados y visualizar los resultados del control de calidad (paciencia con todo, puede tardar). 
+```{bash, eval=doAll}
+multiqc .
+```
+
+  -Trimming and filtering
+  Cutadapt para eliminar los adaptadores Truseq de illumina. 
+
+```{bash, eval=doAll}
+for i in file:
+do
+  cutadapt -a AGATCGGAAGAG SRR146357*.fastq > SRR146357TRIM*.fastq 2> reportSRR146357*.txt 
+done
+
+cutadapt -a AGATCGGAAGAG SRR14635704_1.fastq > SRR146357TRIM04_1.fastq 2> reportSRR14635704_1.txt 
+cutadapt -a AGATCGGAAGAG SRR14635705_1.fastq > SRR146357TRIM05_1.fastq 2> reportSRR14635705_1.txt 
+cutadapt -a AGATCGGAAGAG SRR14635706_1.fastq > SRR146357TRIM06_1.fastq 2> reportSRR14635706_1.txt 
+
+cutadapt -a AGATCGGAAGAG SRR14635707_1.fastq > SRR146357TRIM07_1.fastq 2> reportSRR14635707_1.txt 
+cutadapt -a AGATCGGAAGAG SRR14635708_1.fastq > SRR146357TRIM08_1.fastq 2> reportSRR14635708_1.txt 
+cutadapt -a AGATCGGAAGAG SRR14635709_1.fastq > SRR146357TRIM09_1.fastq 2> reportSRR14635709_1.txt 
+
+cutadapt -a AGATCGGAAGAG SRR14635710_1.fastq > SRR146357TRIM10_1.fastq 2> reportSRR14635710_1.txt 
+cutadapt -a AGATCGGAAGAG SRR14635711_1.fastq > SRR146357TRIM11_1.fastq 2> reportSRR14635711_1.txt 
+cutadapt -a AGATCGGAAGAG SRR14635712_1.fastq > SRR146357TRIM12_1.fastq 2> reportSRR14635712_1.txt 
+
+cutadapt -a AGATCGGAAGAG SRR14635713_1.fastq > SRR146357TRIM13_1.fastq 2> reportSRR14635713_1.txt 
+cutadapt -a AGATCGGAAGAG SRR14635714_1.fastq > SRR146357TRIM14_1.fastq 2> reportSRR14635714_1.txt 
+cutadapt -a AGATCGGAAGAG SRR14635715_1.fastq > SRR146357TRIM15_1.fastq 2> reportSRR14635715_1.txt 
+```
+
+### Indexado del genoma de referencia: HISAT2  
+Cuando trabajamos con un genoma de referencia, este debe estar **indexado**. Muchos alineadores lo requieren para poder ser ejecutados más rápidamente. Para ello lanzamos la siguente línea de código:
+
+```{bash, eval=doAll}
+hisat2-build -p 4 00_chr21_ref_genome_sequence.fa hisat2_index
+```
+
+
+- Con **hisat2-build** se indexa el genoma de referencia de cualquier tamaño (por debajo de 4 billones de nucleótidos, crea un pequeño índice de 32-bits; si es superior, lo crea de 64-bits)  
+- **-p** nos permite indicar el número de procesos/cores que queremos usar en nuestro ordenador para paralelizar la ejecución del programa. Dado que mi procesador es un intel i5-8265U, con 4 núcleos y 8 procesadores lógicos, utilizo un -p de 4.   
+- Hemos creado el indexado del genoma de referencia hisat2_index
+
+Como resultado, se obtienen 8 archivos .ht2 (si fuese de gran tamaño la extensión sería ht2l). El conjunto de archivos constituye el índice del genoma humano, lo abarcan todo. 
+WARNING: In order to index the entire human genome, HISAT2 requires 160GB of RAM. Your AWS instance size will run out of RAM. OOOPS
+HISAT2 indexes are hosted on AWS (Amazon Web Services), thanks to the AWS Public Datasets program. Click this link for more details.
+
+Para obtener más información de los comandos de línea, podemos visitar el [manual](http://daehwankimlab.github.io/hisat2/manual/) de uso de HISAT2.
+
+### Mapeo: HISAT2   
+Una vez indexado, se realiza el mapeo:
+```{bash, eval=doAll}
+hisat2 [options]* -x <hisat2-idx> {-1 <m1> -2 <m2> | -U <r> | --sra-acc <SRA accession number>} [-S <hit>]
+
+hisat2 --summary-file qc_case1 -x hisat2_index -1 00_case1_read1.fastq -2 00_case1_read2.fastq -S 01_case1_hits.sam
+```
+
+### De SAM a BAM
+## By read name
+por read name es necesario para usar htseq-count
+```{bash, eval=doAll}
+#!/bin/bash
+
+samtools sort -n SRR14635704.sam -o SRR14635704_sorted.bam
+samtools sort -n SRR14635705.sam -o SRR14635705_sorted.bam
+samtools sort -n SRR14635706.sam -o SRR14635706_sorted.bam
+
+samtools sort -n SRR14635707.sam -o SRR14635707_sorted.bam
+samtools sort -n SRR14635708.sam -o SRR14635708_sorted.bam
+samtools sort -n SRR14635709.sam -o SRR14635709_sorted.bam
+
+samtools sort -n SRR14635710.sam -o SRR14635710_sorted.bam
+samtools sort -n SRR14635711.sam -o SRR14635711_sorted.bam
+samtools sort -n SRR14635712.sam -o SRR14635712_sorted.bam
+
+samtools sort -n SRR14635713.sam -o SRR14635713_sorted.bam
+samtools sort -n SRR14635714.sam -o SRR14635714_sorted.bam
+samtools sort -n SRR14635715.sam -o SRR14635715_sorted.bam
+
+samtools index SRR14635704_sorted.bam
+samtools index SRR14635705_sorted.bam
+samtools index SRR14635706_sorted.bam
+
+samtools index SRR14635707_sorted.bam
+samtools index SRR14635708_sorted.bam
+samtools index SRR14635709_sorted.bam
+
+samtools index SRR14635710_sorted.bam
+samtools index SRR14635711_sorted.bam
+samtools index SRR14635712_sorted.bam
+
+samtools index SRR14635713_sorted.bam
+samtools index SRR14635714_sorted.bam
+samtools index SRR14635715_sorted.bam
+```
+
+## by chr position
+```{bash, eval=doAll}
+#!/bin/bash
+
+#bam files need to be sorted for igv
+#they wont be used for htseq-count (it needs bam files sorted by read names) 
+
+samtools sort SRR14635704.sam -o igvSRR14635704_sorted.bam
+samtools sort SRR14635705.sam -o igvSRR14635705_sorted.bam
+samtools sort SRR14635706.sam -o igvSRR14635706_sorted.bam
+
+samtools sort SRR14635707.sam -o igvSRR14635707_sorted.bam
+samtools sort SRR14635708.sam -o igvSRR14635708_sorted.bam
+samtools sort SRR14635709.sam -o igvSRR14635709_sorted.bam
+
+samtools sort SRR14635710.sam -o igvSRR14635710_sorted.bam
+samtools sort SRR14635711.sam -o igvSRR14635711_sorted.bam
+samtools sort SRR14635712.sam -o igvSRR14635712_sorted.bam
+
+samtools sort SRR14635713.sam -o igvSRR14635713_sorted.bam
+samtools sort SRR14635714.sam -o igvSRR14635714_sorted.bam
+samtools sort SRR14635715.sam -o igvSRR14635715_sorted.bam
+
+# index them
+samtools index igvSRR14635704_sorted.bam
+samtools index igvSRR14635705_sorted.bam
+samtools index igvSRR14635706_sorted.bam
+
+samtools index igvSRR14635707_sorted.bam
+samtools index igvSRR14635708_sorted.bam
+samtools index igvSRR14635709_sorted.bam
+
+samtools index igvSRR14635710_sorted.bam
+samtools index igvSRR14635711_sorted.bam
+samtools index igvSRR14635712_sorted.bam
+
+samtools index igvSRR14635713_sorted.bam
+samtools index igvSRR14635714_sorted.bam
+samtools index igvSRR14635715_sorted.bam
+
+```
+
+### Computing read counts
+
+- usamos htseq count 
+
+```{bash, eval=doAll}
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635704_sorted.bam Homo_sapiens.GRCh38.105.gtf > SRR14635704_count.gene
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635705_sorted.bam Homo_sapiens.GRCh38.105.gtf > SRR14635705_count.gene
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635706_sorted.bam Homo_sapiens.GRCh38.105.gtf > SRR14635706_count.gene
+
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635707_sorted.bam Homo_sapiens.GRCh38.105.gtf > SRR14635707_count.gene
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635708_sorted.bam Homo_sapiens.GRCh38.105.gtf > SRR14635708_count.gene
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635709_sorted.bam Homo_sapiens.GRCh38.105.gtf > SRR14635709_count.gene
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635710_sorted.bam Homo_sapiens.GRCh38.105.gtf > SRR14635710_count.gene
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635711_sorted.bam Homo_sapiens.GRCh38.105.gtf > SRR14635711_count.gene
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635712_sorted.bam Homo_sapiens.GRCh38.105.gtf > SRR14635712_count.gene
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635713_sorted.bam Homo_sapiens.GRCh38.105.gtf  > SRR14635713_count.gene
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635714_sorted.bam Homo_sapiens.GRCh38.105.gtf  > SRR14635714_count.gene
+htseq-count --format=bam --stranded=no --type=gene --idattr=gene_id SRR14635715_sorted.bam Homo_sapiens.GRCh38.105.gtf  > SRR14635715_count.gene
+
+```
+Argumentos:  
+
+- **format**: tipo de archivo usado como input.  
+- **stranded**: por defecto, stranded=yes. Para stranded=no, se considera la superposición de la read dada una característica (en este caso, gen). Para stranded=yes, con pair-ends reads, la primera lectura debe estar en la misma cadena y la segunda read en la cadena opuesta.  
+- **type**: la característica que se está considerando en la cuantificación de las reads, correspondiente a la tercera columna del fichero de anotación GTF. En este caso, como vemos, podemos trabajar a distintos niveles, tal y como lo especifiquemos (transcript, CDS, exon, etc).
+- **id attribute**: atributo GTF que se usará como ID de la característica. En RNA-seq, por defecto es el gene_id.
+
+Como archivos de salida, se genera una matriz de conteos para cada muestra. 
